@@ -1,0 +1,48 @@
+##
+##  Copyright 2020 Termux
+##
+##  Licensed under the Apache License, Version 2.0 (the "License");
+##  you may not use this file except in compliance with the License.
+##  You may obtain a copy of the License at
+##
+##    http://www.apache.org/licenses/LICENSE-2.0
+##
+##  Unless required by applicable law or agreed to in writing, software
+##  distributed under the License is distributed on an "AS IS" BASIS,
+##  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+##  See the License for the specific language governing permissions and
+##  limitations under the License.
+##
+
+name: Generate PyPI pages
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: ["from_wheel"]
+
+jobs:
+  generate-pypi-pages:
+    if: github.repository == 'termux-user-repository/pypi'
+    runs-on: ubuntu-latest
+    concurrency: pypi_pages_generation
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Generate PyPI pages
+        run: |
+          python generate-pages.py
+
+      - name: Push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          git config --global user.name "TUR Github Actions"
+          git config --global user.email "abc@example.com"
+          git add ./docs
+          git commit -m "update(pages): regenerate pages"
+          git push
