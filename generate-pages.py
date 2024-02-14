@@ -9,7 +9,7 @@ import os
 from collections import defaultdict
 import requests
 
-WHEELS_RELEASE_URL = "https://api.github.com/repos/termux-user-repository/pypi-index-tur/releases/latest"
+WHEELS_RELEASE_URL = "https://api.github.com/repos/termux-user-repository/pypi-wheel-builder/releases/latest"
 
 def get_wheel_infos():
   res = []
