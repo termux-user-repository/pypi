@@ -26,6 +26,7 @@ def get_packages_dict(wheel_infos):
   res = defaultdict(list)
   for wheel_info in wheel_infos:
     package_name = wheel_info[0].split("-")[0]
+    package_name = package_name.replace("_", "-")
     res[package_name].append(wheel_info)
   return res
 
