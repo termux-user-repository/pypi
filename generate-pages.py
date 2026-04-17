@@ -1,97 +1,89 @@
 #!/usr/bin/env python3
-# generate-pages.py - Generate pages for pypi
-#
-# This file is based on https://github.com/bartbroere/pypi.bartbroe.re/blob/main/scrape.py.
-#
-
 import json
 import os
 from collections import defaultdict
-import requests
+from pathlib import Path
 
-WHEELS_RELEASE_URL = "https://api.github.com/repos/termux-user-repository/pypi-wheel-builder/releases/latest"
 
-def get_wheel_infos():
-  res = []
-  resp = requests.get(WHEELS_RELEASE_URL)
-  release_info = json.loads(resp.text)
-  for assert_into in release_info["assets"]:
-    assert_name = assert_into["name"]
-    assert_url = assert_into["browser_download_url"]
-    if assert_name.endswith(".whl"):
-      res.append((assert_name, assert_url))
-  return res
+MANIFEST_PATH = Path("data/manifest.jsonl")
+DOCS_DIR = Path("docs")
 
-def get_packages_dict(wheel_infos):
-  res = defaultdict(list)
-  for wheel_info in wheel_infos:
-    package_name = wheel_info[0].split("-")[0]
-    package_name = package_name.replace("_", "-")
-    res[package_name].append(wheel_info)
-  return res
 
-def generate_packages_index(packages_dict):
-  for package_name, wheels_info in packages_dict.items():
-    try:
-      os.mkdir('docs')
-    except FileExistsError:
-      pass
-    try:
-      os.mkdir(os.path.join('docs', package_name.lower()))
-    except FileExistsError:
-      pass
-    with open(os.path.join('docs', package_name.lower(), 'index.html'), 'w') as package_index:
-      package_index.write(f"""
-          <html>
-          <head>
-              <style>
-              body{{margin:40px auto;max-width:650px;line-height:1.6;font-size:18px;color:#444;padding:0 10px}}
-              h1,h2,h3{{line-height:1.2}}
-              </style>
-              <title>{package_name.lower()}</title>
-          </head>
-          <body>
-          """)
-      for wheel_name, wheel_url in wheels_info:
-        package_index.write(f"""
-                <a href="{wheel_url}">{wheel_name}</a>
-            """)
-      package_index.write(f"""
-                </body>
-                </html>
-            """)
+def get_wheel_infos() -> list[tuple[str, str, str]]:
+    if not MANIFEST_PATH.exists():
+        return []
 
-def generate_main_pages(packages):
-  try:
-    os.mkdir('docs')
-  except FileExistsError:
-    pass
-  with open('docs/index.html', 'w') as main_package_index:
-    main_package_index.write(f"""
-    <html>
-    <head>
-    <style>
-    body{{margin:40px auto;max-width:650px;line-height:1.6;font-size:18px;color:#444;padding:0 10px}}
-    h1,h2,h3{{line-height:1.2}}
-    </style>
-    <title>Termux User Repository PyPI</title>
-    </head>
-    <body>
-    <header>Termux User Repository PyPI, use it with:</header>
-    <pre>pip install --extra-index-url https://termux-user-repository.github.io/pypi/</pre>
-    """)
-    for package_name in sorted(packages):
-        main_package_index.write(f'<a href="{package_name.lower()}">{package_name.lower()}</a>\n\n')
-    main_package_index.write("""
-    </body>
-    </html>
-    """)
+    items: list[tuple[str, str, str]] = []
+    with MANIFEST_PATH.open("r", encoding="utf-8") as fp:
+        for line in fp:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            filename = row.get("filename")
+            url = row.get("url")
+            package_name = row.get("normalized_name") or row.get("package_name")
+            if not filename or not url or not package_name:
+                continue
+            items.append((package_name, filename, url))
+    return items
 
-def main():
-  wheel_infos = get_wheel_infos()
-  packages_dict = get_packages_dict(wheel_infos)
-  generate_packages_index(packages_dict)
-  generate_main_pages(packages_dict.keys())
+
+def get_packages_dict(wheel_infos: list[tuple[str, str, str]]) -> dict[str, list[tuple[str, str]]]:
+    packages = defaultdict(list)
+    for package_name, wheel_name, wheel_url in wheel_infos:
+        packages[package_name].append((wheel_name, wheel_url))
+
+    for package_name in packages:
+        packages[package_name].sort(key=lambda x: x[0])
+    return packages
+
+
+def _page_header(title: str) -> str:
+    return f"""
+<html>
+<head>
+  <style>
+  body{{margin:40px auto;max-width:760px;line-height:1.6;font-size:16px;color:#222;padding:0 14px}}
+  h1,h2,h3{{line-height:1.2}}
+  a{{display:block;margin:6px 0}}
+  </style>
+  <title>{title}</title>
+</head>
+<body>
+"""
+
+
+def generate_packages_index(packages_dict: dict[str, list[tuple[str, str]]]) -> None:
+    DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    for package_name, wheels_info in packages_dict.items():
+        pkg_dir = DOCS_DIR / package_name.lower()
+        pkg_dir.mkdir(parents=True, exist_ok=True)
+        with (pkg_dir / "index.html").open("w", encoding="utf-8") as package_index:
+            package_index.write(_page_header(package_name.lower()))
+            for wheel_name, wheel_url in wheels_info:
+                package_index.write(f'<a href="{wheel_url}">{wheel_name}</a>\n')
+            package_index.write("</body>\n</html>\n")
+
+
+def generate_main_pages(packages: list[str]) -> None:
+    DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    with (DOCS_DIR / "index.html").open("w", encoding="utf-8") as main_package_index:
+        main_package_index.write(_page_header("Termux User Repository PyPI"))
+        main_package_index.write(
+            "<header>Termux User Repository PyPI, use it with:</header>"
+            "<pre>pip install --extra-index-url https://termux-user-repository.github.io/pypi/</pre>\n"
+        )
+        for package_name in sorted(packages):
+            main_package_index.write(f'<a href="{package_name.lower()}">{package_name.lower()}</a>\n')
+        main_package_index.write("</body>\n</html>\n")
+
+
+def main() -> None:
+    wheel_infos = get_wheel_infos()
+    packages_dict = get_packages_dict(wheel_infos)
+    generate_packages_index(packages_dict)
+    generate_main_pages(list(packages_dict.keys()))
 
 if __name__ == "__main__":
   main()

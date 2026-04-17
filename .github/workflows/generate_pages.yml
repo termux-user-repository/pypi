@@ -33,6 +33,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GH_TOKEN }}
 
+      - name: Update manifest from dispatch payload
+        if: github.event_name == 'repository_dispatch'
+        run: |
+          python update-manifest.py
+
       - name: Generate PyPI pages
         run: |
           python generate-pages.py
@@ -43,6 +48,10 @@ jobs:
         run: |
           git config --global user.name "TUR Github Actions"
           git config --global user.email "abc@example.com"
-          git add ./docs
+          git add ./docs ./data/manifest.jsonl
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
           git commit -m "update(pages): regenerate pages"
           git push
